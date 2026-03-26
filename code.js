@@ -5,6 +5,7 @@
 // @description  try to take over the world!
 // @author       You
 // @match        http://localhost:6060/*
+// @match        https://dev-go.opla-crm.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=undefined.localhost
 // @grant        none
 // ==/UserScript==
