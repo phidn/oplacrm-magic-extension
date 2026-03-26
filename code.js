@@ -112,11 +112,60 @@
     return null;
   }
 
-  function fillDrawer(drawer) {
+  // Click an ant-select to open dropdown, then click the first option
+  function fillSelect(selectWrapper) {
+    return new Promise((resolve) => {
+      // Click the selector to open the dropdown
+      const selector = selectWrapper.querySelector('.ant-select-selector');
+      if (!selector) return resolve();
+
+      selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+
+      // Wait for dropdown to appear, then click the first item
+      setTimeout(() => {
+        // Ant Design renders dropdowns in a portal at document.body level
+        // Find the dropdown that just opened (last one in DOM)
+        const dropdowns = document.querySelectorAll(
+          '.ant-select-dropdown:not(.ant-select-dropdown-hidden)'
+        );
+        const dropdown = dropdowns[dropdowns.length - 1];
+
+        if (dropdown) {
+          const firstOption = dropdown.querySelector(
+            '.ant-select-item-option:not(.ant-select-item-option-disabled)'
+          );
+          if (firstOption) {
+            firstOption.click();
+          }
+        }
+        resolve();
+      }, 300);
+    });
+  }
+
+  async function fillDrawer(drawer) {
     const body = drawer.querySelector('.ant-drawer-body');
     if (!body) return;
 
-    // Fill all inputs
+    // 1. Fill all ant-select dropdowns (click to open, pick first item)
+    const selects = body.querySelectorAll(
+      '.ant-select:not(.ant-select-disabled):not(.ant-select-open)'
+    );
+    for (const select of selects) {
+      // Skip selects that already have a value selected
+      const hasValue = select.querySelector('.ant-select-selection-item');
+      if (hasValue) continue;
+
+      // Skip phone country code selects (they already have a default)
+      const searchInput = select.querySelector('input[aria-label="Phone number country"]');
+      if (searchInput) continue;
+
+      await fillSelect(select);
+      // Small delay between selects to avoid overlapping dropdowns
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    // 2. Fill all text/tel/number inputs
     const inputs = body.querySelectorAll('input');
     inputs.forEach((input) => {
       // Skip inputs that already have meaningful value (not just prefix like +84)
@@ -128,7 +177,7 @@
       }
     });
 
-    // Fill all textareas
+    // 3. Fill all textareas
     const textareas = body.querySelectorAll('textarea');
     textareas.forEach((textarea) => {
       if (textarea.value && textarea.value !== '') return;
