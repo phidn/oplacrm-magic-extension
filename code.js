@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         New Userscript
+// @name         OplaGO autofill drawer
 // @namespace    http://tampermonkey.net/
 // @version      2026-03-26
 // @description  try to take over the world!
@@ -37,7 +37,8 @@
     const name = (input.name || '').toLowerCase();
     const placeholder = (input.placeholder || '').toLowerCase();
     const type = (input.type || 'text').toLowerCase();
-    const key = name || placeholder;
+    // Check both name and placeholder for keyword matching
+    const combined = (name + ' ' + placeholder).toLowerCase();
 
     // Skip readonly, disabled, hidden, file inputs
     if (input.readOnly || input.disabled || type === 'hidden' || type === 'file') {
@@ -59,47 +60,47 @@
       return String(Math.floor(1 + Math.random() * 100));
     }
 
-    // Email fields
-    if (type === 'email' || key.includes('email')) {
+    // Email fields — check both name and placeholder
+    if (type === 'email' || combined.includes('email')) {
       return 'test' + Math.floor(Math.random() * 1000) + '@example.com';
     }
 
+    // Link/URL fields — check both name and placeholder
+    if (combined.includes('link') || combined.includes('url') || combined.includes('website') || type === 'url') {
+      return 'https://example.com';
+    }
+
     // Name-related fields
-    if (key.includes('fullname') || key.includes('full name') || key.includes('contact full')) {
+    if (combined.includes('fullname') || combined.includes('full name') || combined.includes('contact full')) {
       return 'Nguyen Van Test';
     }
-    if (key.includes('firstname') || key.includes('first name')) {
+    if (combined.includes('firstname') || combined.includes('first name')) {
       return 'Van Test';
     }
-    if (key.includes('lastname') || key.includes('last name')) {
+    if (combined.includes('lastname') || combined.includes('last name')) {
       return 'Nguyen';
     }
-    if (key.includes('name') && !key.includes('username')) {
+    if (combined.includes('name') && !combined.includes('username')) {
       return 'Test Name ' + Math.floor(Math.random() * 100);
     }
 
     // External ID
-    if (key.includes('externalid') || key.includes('external id') || key.includes('external_id')) {
+    if (combined.includes('externalid') || combined.includes('external id') || combined.includes('external_id')) {
       return 'EXT-' + Math.floor(1000 + Math.random() * 9000);
     }
 
     // Job title
-    if (key.includes('jobtitle') || key.includes('job title') || key.includes('job_title')) {
+    if (combined.includes('jobtitle') || combined.includes('job title') || combined.includes('job_title')) {
       return 'Sales Manager';
     }
 
     // Address
-    if (key.includes('address')) {
+    if (combined.includes('address')) {
       return '123 Le Loi, District 1, HCMC';
     }
 
-    // Link/URL fields
-    if (key.includes('link') || key.includes('url') || key.includes('website') || type === 'url') {
-      return 'https://example.com';
-    }
-
     // Date fields
-    if (key.includes('date') || type === 'date') {
+    if (combined.includes('date') || type === 'date') {
       return null; // Skip date pickers — they need special interaction
     }
 
@@ -110,6 +111,45 @@
     }
 
     return null;
+  }
+
+  // Click an ant-picker to open calendar, then click "Today" button
+  function fillDatePicker(pickerWrapper) {
+    return new Promise((resolve) => {
+      const input = pickerWrapper.querySelector('input');
+      if (!input) return resolve();
+
+      // Skip if already has a value
+      if (input.value && input.value !== '') return resolve();
+
+      // Click the input to open the date picker popup
+      input.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      input.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      input.click();
+
+      setTimeout(() => {
+        // Find the open date picker dropdown (rendered as portal in body)
+        const dropdowns = document.querySelectorAll(
+          '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)'
+        );
+        const dropdown = dropdowns[dropdowns.length - 1];
+
+        if (dropdown) {
+          // Try clicking "Today" button first
+          const todayBtn = dropdown.querySelector('.ant-picker-now-btn');
+          if (todayBtn) {
+            todayBtn.click();
+          } else {
+            // Fallback: click the today cell
+            const todayCell = dropdown.querySelector('.ant-picker-cell-today .ant-picker-cell-inner');
+            if (todayCell) {
+              todayCell.click();
+            }
+          }
+        }
+        resolve();
+      }, 300);
+    });
   }
 
   // Click an ant-select to open dropdown, then click the first option
@@ -165,7 +205,28 @@
       await new Promise((r) => setTimeout(r, 200));
     }
 
-    // 2. Fill all text/tel/number inputs
+    // 1b. Wait for dependent selects to become enabled (e.g., State/Province after Country)
+    await new Promise((r) => setTimeout(r, 500));
+    const newSelects = body.querySelectorAll(
+      '.ant-select:not(.ant-select-disabled):not(.ant-select-open)'
+    );
+    for (const select of newSelects) {
+      const hasValue = select.querySelector('.ant-select-selection-item');
+      if (hasValue) continue;
+      const searchInput = select.querySelector('input[aria-label="Phone number country"]');
+      if (searchInput) continue;
+      await fillSelect(select);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    // 2. Fill all date pickers (click to open, then click "Today")
+    const datePickers = body.querySelectorAll('.ant-picker:not(.ant-picker-disabled)');
+    for (const picker of datePickers) {
+      await fillDatePicker(picker);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    // 3. Fill all text/tel/number inputs
     const inputs = body.querySelectorAll('input');
     inputs.forEach((input) => {
       // Skip inputs that already have meaningful value (not just prefix like +84)
@@ -177,7 +238,7 @@
       }
     });
 
-    // 3. Fill all textareas
+    // 4. Fill all textareas
     const textareas = body.querySelectorAll('textarea');
     textareas.forEach((textarea) => {
       if (textarea.value && textarea.value !== '') return;
